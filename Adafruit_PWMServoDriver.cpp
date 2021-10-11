@@ -274,7 +274,7 @@ void Adafruit_PWMServoDriver::wakeup() {
 	int sleep = i2cReadByteData(handle, PCA9685_MODE1);
 	if(sleep < 0) {
 		// report error
-		printError(result);
+		printError(sleep);
 	}
 	uint8_t wakeup = sleep & ~MODE1_SLEEP; // set sleep bit low
 	int result = i2cWriteByteData(handle, PCA9685_MODE1, wakeup);
