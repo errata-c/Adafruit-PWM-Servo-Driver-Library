@@ -1,3 +1,8 @@
+build
+out
+CMakeSettings.json
+CMakeUserPresets.json
+
 # osx
 .DS_Store
 
