@@ -155,7 +155,7 @@ static void throwI2CError(int type) {
 	case PI_BAD_I2C_WLEN:
 		throw std::logic_error("PI_BAD_I2C_WLEN");
 	default:
-		throw std::logic_error("Unexpected i2c error code! 0x%X\n", type);
+		throw std::logic_error("Unexpected i2c error code!");
 	}
 }
 static void checkI2CError(int type) {
