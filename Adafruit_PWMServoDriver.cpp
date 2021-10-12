@@ -30,7 +30,11 @@
 #include "Adafruit_PWMServoDriver.h"
 #include <pigpio/pigpio.h>
 
-// These macros did NOT need to be in the header file.
+
+#define PCA9685_PRESCALE_MIN 3   /**< minimum prescale value */
+#define PCA9685_PRESCALE_MAX 255 /**< maximum prescale value */
+#define PCA9685_FREQUENCY_OSCILLATOR 25'000'000 /**< Int. osc. frequency in datasheet */
+
 
 // REGISTER ADDRESSES
 #define PCA9685_MODE1 0x00      /**< Mode Register 1 */
@@ -73,9 +77,15 @@
 // For picking how long to sleep
 #include <chrono>
 #include <cstdio>
+#include <cassert>
+#include <stdexcept>
+#include <algorithm>
 
-static void printError(int type) {
-#ifdef ENABLE_DEBUG_OUTPUT
+static void sleepMillis(int count) {
+	std::this_thread::sleep_for(std::chrono::milliseconds(count));
+}
+
+static void printI2CError(int type) {
 	switch(type) {
 	case PI_BAD_I2C_BUS:
 		printf("PI_BAD_I2C_BUS");
@@ -117,16 +127,49 @@ static void printError(int type) {
 		printf("Unexpected i2c error code! 0x%X\n", type);
 		break;
 	}
-#endif
 }
-
+static void throwI2CError(int type) {
+	switch(type) {
+	case PI_BAD_I2C_BUS:
+		throw std::logic_error("PI_BAD_I2C_BUS");
+	case PI_BAD_I2C_ADDR:
+		throw std::logic_error("PI_BAD_I2C_ADDR");
+	case PI_BAD_FLAGS:
+		throw std::logic_error("PI_BAD_FLAGS");
+	case PI_NO_HANDLE:
+		throw std::logic_error("PI_NO_HANDLE");
+	case PI_I2C_OPEN_FAILED:
+		throw std::logic_error("PI_I2C_OPEN_FAILED");
+	case PI_BAD_PARAM:
+		throw std::logic_error("PI_BAD_PARAM");
+	case PI_I2C_READ_FAILED:
+		throw std::logic_error("PI_I2C_READ_FAILED");
+	case PI_BAD_HANDLE:
+		throw std::logic_error("PI_BAD_HANDLE");
+	case PI_BAD_POINTER:
+		throw std::logic_error("PI_BAD_POINTER");
+	case PI_BAD_I2C_CMD:
+		throw std::logic_error("PI_BAD_I2C_CMD");
+	case PI_BAD_I2C_RLEN:
+		throw std::logic_error("PI_BAD_I2C_RLEN");
+	case PI_BAD_I2C_WLEN:
+		throw std::logic_error("PI_BAD_I2C_WLEN");
+	default:
+		throw std::logic_error("Unexpected i2c error code! 0x%X\n", type);
+	}
+}
+static void checkI2CError(int type) {
+	if(type < 0) {
+		throwError(type);
+	}
+}
 
 /*!
  *  @brief  Instantiates a new PCA9685 PWM driver chip with the I2C address
  *  @param  addr The 7-bit I2C address to locate this chip, default is 0x40
  */
 Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(const uint8_t addr)
-    : Adafruit_PWMServoDriver(addr, 1)
+    : Adafruit_PWMServoDriver(addr, 0)
 {}
 
 /*!
@@ -160,19 +203,14 @@ Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(Adafruit_PWMServoDriver && othe
 	other.handle = -1;
 }
 Adafruit_PWMServoDriver & Adafruit_PWMServoDriver::operator=(const Adafruit_PWMServoDriver & other) {
-	if(other.handle >= 0){
+	if(other.handle >= 0) {
 		// Check to see if we can open another connection BEFORE we overwrite the data in this object.
 		int result = i2cOpen(i2cBus, i2cAddr, 0);
-		if(result < 0) {
-			// report error
-			printError(result);
+		checkI2CError(result);
+		if(handle >= 0) {
+			i2cClose(handle);
 		}
-		else {
-			if(handle >= 0) {
-				i2cClose(handle);
-			}
-			handle = result;
-		}
+		handle = result;
 	}
 	else {
 		if(handle >= 0) {
@@ -205,83 +243,72 @@ Adafruit_PWMServoDriver::~Adafruit_PWMServoDriver() {
 	}
 }
 
-
+bool Adafruit_PWMServoDriver::isValid() const noexcept {
+	return handle >= 0;
+}
 
 /*!
  *  @brief  Setups the I2C interface and hardware
  *  @param  prescale
  *          Sets External Clock (Optional)
  */
-void Adafruit_PWMServoDriver::begin(uint8_t prescale) {
-  int result = i2cOpen(i2cBus, i2cAddr, 0);
-  if(result < 0) {
-	  // Report the error
-	  printError(result);
-  }
-  else {
-	  handle = result;
-  }
-  
-  reset();
-  if (prescale) {
-    setExtClk(prescale);
-  } else {
-    // set a default frequency
-    setPWMFreq(1000);
-  }
-  // set the default internal frequency
-  setOscillatorFrequency(PCA9685_FREQUENCY_OSCILLATOR);
+void Adafruit_PWMServoDriver::begin() {
+	assert(!isValid() && "Called begin twice!");
+	
+	int result = i2cOpen(i2cBus, i2cAddr, 0);
+	checkI2CError(result);
+
+	handle = result;
+
+	// reset the state of the board
+	reset();
+
+	// set a default frequency
+	setPWMFreq(50);
 }
 
 /*!
  *  @brief  Sends a reset command to the PCA9685 chip over I2C
  */
 void Adafruit_PWMServoDriver::reset() {
+	assert(isValid() && "Servo driver was not initialized!");
+	
 	int result = i2cWriteByteData(handle, PCA9685_MODE1, MODE1_RESTART);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
-	else {
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-	}
+	
+	checkI2CError(result);
+
+	sleepMillis(10);
 }
 
 /*!
  *  @brief  Puts board into sleep mode
  */
 void Adafruit_PWMServoDriver::sleep() {
+	assert(isValid() && "Servo driver was not initialized!");
+	
 	int awake = i2cReadByteData(handle, PCA9685_MODE1);
-	if(awake < 0) {
-		//report error
-		printError(awake);
-	}
+	checkI2CError(awake);
+
 	uint8_t sleep = awake | MODE1_SLEEP; // set sleep bit high
 	int result = i2cWriteByteData(handle, PCA9685_MODE1, sleep);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
-	else {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5)); // wait until cycle ends for sleep to be active
-	}	
+	checkI2CError(result);
+
+	// wait until cycle ends for sleep to be active
+	sleepMillis(5);
 }
 
 /*!
  *  @brief  Wakes board from sleep
  */
 void Adafruit_PWMServoDriver::wakeup() {
+	assert(isValid() && "Servo driver was not initialized!");
+	
 	int sleep = i2cReadByteData(handle, PCA9685_MODE1);
-	if(sleep < 0) {
-		// report error
-		printError(sleep);
-	}
+	checkI2CError(sleep);
+
 	uint8_t wakeup = sleep & ~MODE1_SLEEP; // set sleep bit low
 	int result = i2cWriteByteData(handle, PCA9685_MODE1, wakeup);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
 }
 
 /*!
@@ -290,43 +317,32 @@ void Adafruit_PWMServoDriver::wakeup() {
  *          Configures the prescale value to be used by the external clock
  */
 void Adafruit_PWMServoDriver::setExtClk(uint8_t prescale) {
+	assert(isValid() && "Servo driver was not initialized!");
+	
 	int oldmode = i2cReadByteData(handle, PCA9685_MODE1);
-	if(oldmode < 0) {
-		//report error
-		printError(oldmode);
-	}
+	checkI2CError(oldmode);
+
+	// Remove the restart bit, add sleep bit
 	uint8_t newmode = (oldmode & ~MODE1_RESTART) | MODE1_SLEEP; // sleep
 	
 	int result = i2cWriteByteData(handle, PCA9685_MODE1, newmode);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
 	
 	// This sets both the SLEEP and EXTCLK bits of the MODE1 register to switch to
 	// use the external clock.
 	result = i2cWriteByteData(handle, PCA9685_MODE1, (newmode |= MODE1_EXTCLK));
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
-	
+	checkI2CError(result);
+
 	// set the prescaler
 	result = i2cWriteByteData(handle, PCA9685_PRESCALE, prescale);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
 	
-	std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	sleepMillis(5);
 	
 	// clear the SLEEP bit to start
 	newmode = (newmode & ~MODE1_SLEEP) | MODE1_RESTART | MODE1_AI;
 	result = i2cWriteByteData(handle, PCA9685_MODE1, newmode);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
 
 #ifdef ENABLE_DEBUG_OUTPUT
 	printf("Mode now 0x%X\n", newmode);
@@ -338,63 +354,47 @@ void Adafruit_PWMServoDriver::setExtClk(uint8_t prescale) {
  *  @param  freq Floating point frequency that we will attempt to match
  */
 void Adafruit_PWMServoDriver::setPWMFreq(float freq) {
+	assert(isValid() && "Servo driver was not initialized!");
+	
 #ifdef ENABLE_DEBUG_OUTPUT
 	printf("Attempting to set PWM frequency to %f\n", freq);
 #endif
 	// Range output modulation frequency is dependant on oscillator
 	
 	// Clamp the frequency to a acceptable range.
-	if (freq < 1.f) {
-		freq = 1.f;
-	}
-	if (freq > 3500.f) {
-		freq = 3500.f; // Datasheet limit is 3052=50MHz/(4*4096)
-	}
+	freq = std::max(1.f, freq);
 
-	float prescaleval = ((oscillatorFreq / (freq * 4096.0)) + 0.5) - 1;
-	if (prescaleval < PCA9685_PRESCALE_MIN) {
-		prescaleval = PCA9685_PRESCALE_MIN;
-	}
-	if (prescaleval > PCA9685_PRESCALE_MAX) {
-		prescaleval = PCA9685_PRESCALE_MAX;
-	}
-	uint8_t prescale = (uint8_t)prescaleval;
+	// 4096 ticks per cycle, multiply by the frequency to get the total ticks required
+	// The prescale is for the tick rate
+	// Add 0.5 to make sure it rounds up
+	int iprescale = ((oscillatorFreq / (freq * 4096.0)) + 0.5) - 1;
+	iprescale = std::max(PCA9685_PRESCALE_MIN, std::min(iprescale, PCA9685_PRESCALE_MAX));
 
+	uint8_t prescale = (uint8_t)iprescale;
 #ifdef ENABLE_DEBUG_OUTPUT
 	printf("Final prescale: %d\n", prescale);
 #endif
 
+	// Docs say we must set sleep bit before setting the prescale.
 	int oldmode = i2cReadByteData(handle, PCA9685_MODE1);
-	if(oldmode < 0) {
-		// report error
-		printError(oldmode);
-	}
+	checkI2CError(oldmode);
+
 	uint8_t newmode = (oldmode & ~MODE1_RESTART) | MODE1_SLEEP; // sleep
 	
 	int result = i2cWriteByteData(handle, PCA9685_MODE1, newmode);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
+
 	result = i2cWriteByteData(handle, PCA9685_PRESCALE, prescale);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
+
 	result = i2cWriteByteData(handle, PCA9685_MODE1, oldmode);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
 	
-	std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	sleepMillis(5);
 	
 	// This sets the MODE1 register to turn on auto increment.
 	result = i2cWriteByteData(handle, PCA9685_MODE1, oldmode | MODE1_RESTART | MODE1_AI);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
 
 #ifdef ENABLE_DEBUG_OUTPUT
 	printf("Mode now 0x%X\n", newmode);
@@ -403,21 +403,16 @@ void Adafruit_PWMServoDriver::setPWMFreq(float freq) {
 
 /*!
  *  @brief  Sets the output mode of the PCA9685 to either
- *  open drain or push pull / totempole.
+ *  open drain or push pull.
  *  Warning: LEDs with integrated zener diodes should
  *  only be driven in open drain mode.
- *  @param  totempole Totempole if true, open drain if false.
+ *  @param  enabled Push pull if true, open drain if false
  */
 void Adafruit_PWMServoDriver::setPushPull(bool enabled) {
-	/*
-	PCA9685_MODE2 register is a bitfield containing mode flags.
-	We just have to add or remove the MODE2_OUTDRV flag in this function.
-	*/
+	//We just have to add or remove the MODE2_OUTDRV flag in this function.
 	int oldmode = i2cReadByteData(handle, PCA9685_MODE2);
-	if(oldmode < 0) {
-		// report error
-		printError(oldmode);
-	}
+	checkI2CError(oldmode);
+
 	uint8_t newmode;
 	if (enabled) {
 		newmode = oldmode | MODE2_OUTDRV;
@@ -425,10 +420,7 @@ void Adafruit_PWMServoDriver::setPushPull(bool enabled) {
 		newmode = oldmode & ~MODE2_OUTDRV;
 	}
 	int result = i2cWriteByteData(handle, PCA9685_MODE2, newmode);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
 }
 
 /*!
@@ -449,14 +441,9 @@ void Adafruit_PWMServoDriver::setOpenDrain(bool enabled) {
  */
 uint8_t Adafruit_PWMServoDriver::readPrescale(void) {
 	int result = i2cReadByteData(handle, PCA9685_PRESCALE);
-	if(result < 0) {
-		// report error
-		printError(result);
-		return 0;
-	}
-	else {
-		return (uint8_t)result;
-	}
+	checkI2CError(result);
+
+	return (uint8_t)result;
 }
 
 /*!
@@ -470,13 +457,9 @@ uint8_t Adafruit_PWMServoDriver::getPWM(uint8_t num) {
 	// This function need some work.
 	char data[4];
 	int result = i2cReadI2CBlockData(handle, PCA9685_LED0_ON_L + 4 * num, data, 4);
-	if(result < 0) {
-		printError(result);
-		return 0;
-	}
-	else {
-		return data[0];
-	}
+	checkI2CError(result);
+
+	return data[0];
 }
 
 /*!
@@ -498,10 +481,7 @@ void Adafruit_PWMServoDriver::setPWM(uint8_t num, uint16_t on, uint16_t off) {
 	};
 	
 	int result = i2cWriteI2CBlockData(handle, PCA9685_LED0_ON_L + 4 * num, data, 4);
-	if(result < 0) {
-		// report error
-		printError(result);
-	}
+	checkI2CError(result);
 }
 
 /*!
@@ -516,9 +496,7 @@ void Adafruit_PWMServoDriver::setPWM(uint8_t num, uint16_t on, uint16_t off) {
  */
 void Adafruit_PWMServoDriver::setPin(uint8_t num, uint16_t val, bool invert) {
 	// Clamp value between 0 and 4095 inclusive.
-	if(val > 4095) {
-		val = 4095;
-	}
+	val = std::min(val, 4095);
 	if(invert) {
 		val = 4095 - val;
 	}
@@ -547,8 +525,7 @@ void Adafruit_PWMServoDriver::writeMicroseconds(uint8_t num,
 #endif
 
 	double pulse = Microseconds;
-	double pulselength;
-	pulselength = 1000000; // 1,000,000 us per second
+	double pulselength = 1'000'000; // 1,000,000 us per second
 
 	// Read prescale
 	uint16_t prescale = readPrescale();
@@ -560,8 +537,7 @@ void Adafruit_PWMServoDriver::writeMicroseconds(uint8_t num,
 	// Calculate the pulse for PWM based on Equation 1 from the datasheet section
 	// 7.3.5
 	prescale += 1;
-	pulselength *= prescale;
-	pulselength /= oscillatorFreq;
+	pulselength = (pulselength * prescale) / oscillatorFreq;
 
 #ifdef ENABLE_DEBUG_OUTPUT
 	printf("%f us per bit\n", pulselength);
