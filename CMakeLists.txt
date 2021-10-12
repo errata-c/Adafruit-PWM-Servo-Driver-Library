@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(ADA_PWM_SERVO_DRIVER
+project(ADA_PWM_DRIVER
 VERSION 2.4.0
 LANGUAGES CXX
 )
@@ -25,7 +25,7 @@ include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
 set(PWM_DRIVER_PACKAGE_NAME adafruit_pwm_driver)
-set(RELATIVE_CONFIG_DIR "share/cmake/${PWM_DRIVER_PACKAGE_NAME}")
+set(RELATIVE_CONFIG_DIR "share/${PWM_DRIVER_PACKAGE_NAME}")
 
 install(TARGETS pwm_driver
     EXPORT ${PWM_DRIVER_PACKAGE_NAME}Targets
