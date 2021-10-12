@@ -160,7 +160,7 @@ static void throwI2CError(int type) {
 }
 static void checkI2CError(int type) {
 	if(type < 0) {
-		throwError(type);
+		throwI2CError(type);
 	}
 }
 
