@@ -34,7 +34,6 @@ public:
 	static constexpr uint32_t DefaultI2CAddress = 0x40;
 	
 	Adafruit_PWMServoDriver(const uint8_t addr = DefaultI2CAddress);
-	Adafruit_PWMServoDriver(const uint8_t addr, const uint8_t _i2cBus);
 
 	Adafruit_PWMServoDriver(const Adafruit_PWMServoDriver & other);
 	Adafruit_PWMServoDriver(Adafruit_PWMServoDriver && other) noexcept;
@@ -65,7 +64,6 @@ public:
 
 private:
 	uint8_t i2cAddr;
-	uint8_t i2cBus;
 	int handle;
 
 	uint32_t oscillatorFreq;

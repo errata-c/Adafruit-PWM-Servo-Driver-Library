@@ -169,18 +169,7 @@ static void checkI2CError(int type) {
  *  @param  addr The 7-bit I2C address to locate this chip, default is 0x40
  */
 Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(const uint8_t addr)
-    : Adafruit_PWMServoDriver(addr, 0)
-{}
-
-/*!
- *  @brief  Instantiates a new PCA9685 PWM driver chip with the I2C address
- *  @param  addr The 7-bit I2C address to locate this chip, default is 0x40
- *  @param  bus The i2c bus to use on the pi, default is 0
- */
-Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(const uint8_t addr,
-                                                 const uint8_t bus)
     : i2cAddr(addr)
-	, i2cBus(bus)
 	, handle(-1) 
 	, oscillatorFreq(PCA9685_FREQUENCY_OSCILLATOR)
 {}
@@ -188,7 +177,6 @@ Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(const uint8_t addr,
 
 Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(const Adafruit_PWMServoDriver & other)
 	: i2cAddr(other.i2cAddr)
-	, i2cBus(other.i2cBus)
 	, handle(-1)
 	, oscillatorFreq(other.oscillatorFreq)
 {
@@ -196,7 +184,6 @@ Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(const Adafruit_PWMServoDriver &
 }
 Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(Adafruit_PWMServoDriver && other) noexcept 
 	: i2cAddr(other.i2cAddr)
-	, i2cBus(other.i2cBus)
 	, handle(other.handle)
 	, oscillatorFreq(other.oscillatorFreq)
 {
@@ -205,7 +192,7 @@ Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(Adafruit_PWMServoDriver && othe
 Adafruit_PWMServoDriver & Adafruit_PWMServoDriver::operator=(const Adafruit_PWMServoDriver & other) {
 	if(other.handle >= 0) {
 		// Check to see if we can open another connection BEFORE we overwrite the data in this object.
-		int result = i2cOpen(i2cBus, i2cAddr, 0);
+		int result = i2cOpen(1, i2cAddr, 0);
 		checkI2CError(result);
 		if(handle >= 0) {
 			i2cClose(handle);
@@ -220,7 +207,6 @@ Adafruit_PWMServoDriver & Adafruit_PWMServoDriver::operator=(const Adafruit_PWMS
 	}
 	
 	i2cAddr = other.i2cAddr;
-	i2cBus = other.i2cBus;
 	oscillatorFreq = other.oscillatorFreq;
 	
 	return *this;
@@ -230,7 +216,6 @@ Adafruit_PWMServoDriver & Adafruit_PWMServoDriver::operator=(Adafruit_PWMServoDr
 		i2cClose(handle);
 	}
 	i2cAddr = other.i2cAddr;
-	i2cBus = other.i2cBus;
 	handle = other.handle;
 	oscillatorFreq = other.oscillatorFreq;
 	
@@ -255,7 +240,7 @@ bool Adafruit_PWMServoDriver::isValid() const noexcept {
 void Adafruit_PWMServoDriver::begin() {
 	assert(!isValid() && "Called begin twice!");
 	
-	int result = i2cOpen(i2cBus, i2cAddr, 0);
+	int result = i2cOpen(1, i2cAddr, 0);
 	checkI2CError(result);
 
 	handle = result;
