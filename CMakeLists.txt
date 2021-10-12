@@ -49,7 +49,7 @@ install(EXPORT ${PWM_DRIVER_PACKAGE_NAME}Targets
   FILE
     ${PWM_DRIVER_PACKAGE_NAME}Targets.cmake
   NAMESPACE
-    pigpio::
+    adafruit::
   DESTINATION
     ${RELATIVE_CONFIG_DIR}
 )
