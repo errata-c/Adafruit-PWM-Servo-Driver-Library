@@ -368,7 +368,7 @@ void Adafruit_PWMServoDriver::setPWMFreq(float freq) {
 	// The prescale is for the tick rate
 	// Add 0.5 to make sure it rounds up
 	int iprescale = ((oscillatorFreq / (freq * 4096.0)) + 0.5) - 1;
-	iprescale = std::max(PCA9685_PRESCALE_MIN, std::min(iprescale, PCA9685_PRESCALE_MAX));
+	iprescale = std::max<int>(PCA9685_PRESCALE_MIN, std::min<int>(iprescale, PCA9685_PRESCALE_MAX));
 
 	uint8_t prescale = (uint8_t)iprescale;
 #ifdef ENABLE_DEBUG_OUTPUT
@@ -496,7 +496,7 @@ void Adafruit_PWMServoDriver::setPWM(uint8_t num, uint16_t on, uint16_t off) {
  */
 void Adafruit_PWMServoDriver::setPin(uint8_t num, uint16_t val, bool invert) {
 	// Clamp value between 0 and 4095 inclusive.
-	val = std::min(val, 4095);
+	val = std::min<uint16_t>(val, 4095);
 	if(invert) {
 		val = 4095 - val;
 	}

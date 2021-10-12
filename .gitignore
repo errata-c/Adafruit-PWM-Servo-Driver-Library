@@ -3,6 +3,8 @@ out
 CMakeSettings.json
 CMakeUserPresets.json
 
+.vscode
+
 # osx
 .DS_Store
 
